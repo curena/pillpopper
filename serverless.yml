@@ -48,8 +48,8 @@ functions:
       - alexaSkill
 
 #    Define function environment variables here
-#    environment:
-#      variable2: value2
+    environment:
+      alexa_skill_id: amzn1.ask.skill.a34a2e4f-5362-4299-9877-c59215f560fc
 
 # you can add CloudFormation resource templates here
 #I'll need a dynamodb table that holds the last time I took my pill (and which).
