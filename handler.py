@@ -1,8 +1,11 @@
+from __future__ import print_function  # Python 2/3 compatibility
 import boto3
 import os
-from datetime import date
+from datetime import date, datetime
+import time
 
-dynamo = boto3.resource('dynamodb')
+dynamodb = boto3.resource('dynamodb')
+seconds_in_a_day = 84600
 
 
 # main handler
@@ -29,7 +32,7 @@ def new_ingestion(intent, user_id):
     should_end_session = False
     if 'pillType' in intent['slots']:
         pill_type = intent['slots']['pillType']['value']
-        add_ingestion_of(pill_type, user_id)
+        add_ingestion_of(user_id, pill_type)
         session_attributes = {"pillType": pill_type}
         speech_output = "You've just taken your " + \
                         pill_type + \
@@ -56,14 +59,14 @@ def check_last_ingestion(intent, user_id):
     card_title = intent['name']
     session_attributes = {}
     should_end_session = False
-    speech_output = ""
-    reprompt_text = ""
+    speech_output = None
+    reprompt_text = None
 
     if 'pillType' in intent['slots']:
         pill_type = intent['slots']['pillType']['value']
-        last_ingestion = get_last_ingestion(pill_type, user_id)
+        last_ingestion = get_last_ingestion(user_id, pill_type)
         session_attributes = {"pillType": pill_type}
-        if date.fromtimestamp(last_ingestion) == date.today():
+        if not date.fromtimestamp(last_ingestion) == date.today():
             speech_output = "You've already taken your " + \
                             pill_type + \
                             " medicine today."
@@ -124,13 +127,36 @@ def build_response(session_attributes, speechlet_response):
 #     dynamo.add_a_pill_type(pill_type)
 
 
-def add_ingestion_of(pill_type, user_id):
-    today = date.today()
-    dynamo.add_an_ingestion(pill_type, user_id, today)
+def add_ingestion_of(user_id, pill_type):
+    today = convert_date_to_string(date.today())
+    today_timestamp = time.mktime(datetime.strptime(today, "%Y-%m-%d").timetuple())
+    table = dynamodb.Table('ingestions')
+    table.update_item(
+        Key={
+            'user_id': user_id,
+            'pill_type': pill_type
+        },
+        UpdateExpression="set timestamp = :t",
+        ExpressionAttributeValues={
+            ':t': today_timestamp
+        },
+        ReturnValues="UPDATED_NEW"
+    )
 
 
-def get_last_ingestion(pill_type, user_id):
-    return dynamo.find_something(pill_type, user_id)['time']
+def convert_date_to_string(the_date):
+    return str(the_date.year) + '-' + str(the_date.month) + '-' + str(the_date.day)
+
+
+def get_last_ingestion(user_id, pill_type):
+    table = dynamodb.Table('ingestions')
+    response = table.get_item(
+        Key={
+            'user_id': user_id,
+            'pill_type': pill_type
+        }
+    )
+    return float(response['Item']['timestamp'])
 
 
 def handle_session_end_request():

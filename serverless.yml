@@ -9,24 +9,22 @@ provider:
   runtime: python2.7
   memorySize: 512 # optional, in MB, default is 1024
   timeout: 60 # optional, in seconds, default is 6
+  iamRoleStatements:
+      - Effect: Allow
+           Action: # Gives permission to DynamoDB tables in a specific region
+             - dynamodb:DescribeTable
+             - dynamodb:Query
+             - dynamodb:Scan
+             - dynamodb:GetItem
+             - dynamodb:PutItem
+             - dynamodb:UpdateItem
+             - dynamodb:DeleteItem
+             - dynamodb:GetRecords
+           Resource: "arn:aws:dynamodb:us-east-1:321304095132:table/Ingestions"
 
 # you can overwrite defaults here
 #  stage: dev
 region: us-east-1
-
-# you can add statements to the Lambda function's IAM Role here
-iamRoleStatements:
-    - Effect: Allow
-         Action: # Gives permission to DynamoDB tables in a specific region
-           - dynamodb:DescribeTable
-           - dynamodb:Query
-           - dynamodb:Scan
-           - dynamodb:GetItem
-           - dynamodb:PutItem
-           - dynamodb:UpdateItem
-           - dynamodb:DeleteItem
-           - dynamodb:GetRecords
-         Resource: "arn:aws:dynamodb:us-east-1:*:*"
 
 # you can define service wide environment variables here
 #  environment:
@@ -46,20 +44,28 @@ functions:
     handler: handler.popperHandler
     events:
       - alexaSkill
-
 #    Define function environment variables here
     environment:
       alexa_skill_id: amzn1.ask.skill.a34a2e4f-5362-4299-9877-c59215f560fc
 
-# you can add CloudFormation resource templates here
-#I'll need a dynamodb table that holds the last time I took my pill (and which).
-#resources:
-#  Resources:
-#    NewResource:
-#      Type: AWS::S3::Bucket
-#      Properties:
-#        BucketName: my-new-bucket
-#  Outputs:
-#     NewOutput:
-#       Description: "Description for the output"
-#       Value: "Some output value"
+resources:
+  Resources:
+    DynamoDbTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: Ingestions
+        AttributeDefinitions:
+          - AttributeName: user_id
+            AttributeType: S
+          - AttributeName: pill_type
+            AttributeType: S
+          - AttributeName: timestamp
+            AttributeType: S
+        KeySchema:
+          - AttributeName: user_id
+            KeyType: HASH
+          - AttributeName: pill_type
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
