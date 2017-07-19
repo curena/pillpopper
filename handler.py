@@ -81,9 +81,12 @@ def check_last_ingestion(intent, user_id):
             speech_output = "You have not yet taken your " + \
                             pill_type + \
                             " medicine today."
-            reprompt_text = "I'm not sure what your medicine type is. " \
-                            "You can tell me your pillType by saying something like, " \
-                            "The cholesterol pill, or, the Crestor pill."
+    else:
+        speech_output = "I'm not sure what your medicine type is. " \
+                        "Please try again."
+        reprompt_text = "I'm not sure what your medicine type is. " \
+                    "You can tell me your pillType by saying something like, " \
+                    "The cholesterol pill, or, the Crestor pill."
 
     return build_response(session_attributes,
                           build_speechlet_response(card_title, speech_output, reprompt_text, should_end_session))
