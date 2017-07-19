@@ -1,11 +1,18 @@
 from __future__ import print_function  # Python 2/3 compatibility
-import boto3
-import os
-from datetime import date, datetime
-import time
 
-dynamodb = boto3.resource('dynamodb')
+import json
+import logging
+import os
+import time
+from datetime import date, datetime
+
+import boto3
+from botocore.exceptions import ClientError
+
+dynamodb = boto3.client('dynamodb')
 seconds_in_a_day = 84600
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 # main handler
@@ -123,25 +130,25 @@ def build_response(session_attributes, speechlet_response):
     }
 
 
-# def add_new_pill_type(pill_type):
-#     dynamo.add_a_pill_type(pill_type)
-
-
 def add_ingestion_of(user_id, pill_type):
     today = convert_date_to_string(date.today())
     today_timestamp = time.mktime(datetime.strptime(today, "%Y-%m-%d").timetuple())
-    table = dynamodb.Table('ingestions')
-    table.update_item(
-        Key={
-            'user_id': user_id,
-            'pill_type': pill_type
-        },
-        UpdateExpression="set timestamp = :t",
-        ExpressionAttributeValues={
-            ':t': today_timestamp
-        },
-        ReturnValues="UPDATED_NEW"
-    )
+
+    try:
+        dynamodb.update_item(
+            TableName='Ingestions',
+            Key={
+                'user_id': {'S': str(user_id)},
+                'pill_type': {'S': str(pill_type)}
+            },
+            UpdateExpression="set timestamp = :t",
+            ExpressionAttributeValues={
+                ':t': today_timestamp
+            },
+            ReturnValues="UPDATED_NEW"
+        )
+    except ClientError as e:
+        logger.error("Error updating item. {}".format(e.response['Error']['Message']))
 
 
 def convert_date_to_string(the_date):
@@ -149,14 +156,24 @@ def convert_date_to_string(the_date):
 
 
 def get_last_ingestion(user_id, pill_type):
-    table = dynamodb.Table('ingestions')
-    response = table.get_item(
-        Key={
-            'user_id': user_id,
-            'pill_type': pill_type
-        }
-    )
-    return float(response['Item']['timestamp'])
+    item = None
+    try:
+        response = dynamodb.get_item(
+            TableName='Ingestions',
+            Key={
+                'user_id': {'S': str(user_id)},
+                'pill_type': {'S': str(pill_type)}
+            }
+        )
+        logger.info("Response: {}".format(json.dumps(response, indent=4)))
+        item = response['Item']
+    except ClientError as e:
+        logger.error("Error finding item. {}".format(e.response['Error']['Message']))
+
+    if item is not None:
+        return float(item['timestamp'])
+    else:
+        return None
 
 
 def handle_session_end_request():
