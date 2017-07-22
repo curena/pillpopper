@@ -40,17 +40,29 @@ def new_ingestion(intent, user_id, directive):
     should_end_session = False
 
     if 'pillType' in intent['slots'] and 'value' in intent['slots']['pillType']:
-        logger.info("We have a pillType value.")
-        pill_type = intent['slots']['pillType']['value']
-        logger.info("pillType is value {}".format(pill_type))
-        add_ingestion_of(user_id, pill_type)
-        session_attributes = {"pillType": pill_type}
+        pill_type_value = intent['slots']['pillType']['value']
+        logger.info("pillType is {}".format(pill_type_value))
+        session_attributes = {"pillType": pill_type_value}
+        if took_pill_today(user_id, pill_type_value):
+            speech_output = "Wait! You've already taken your " + pill_type_value + " medicine today."
+        else:
+            add_ingestion_of(user_id, pill_type_value)
+            speech_output = "Ok, I've recorded that you just took your " + pill_type_value + " medicine."
     else:
+        speech_output = None
         logger.info("We do NOT have a pillType value.")
 
     return build_response(session_attributes,
-                          build_speechlet_response(card_title, None, None, should_end_session,
+                          build_speechlet_response(card_title, speech_output, None, should_end_session,
                                                    directive))
+
+
+def took_pill_today(user_id, pill_type_value):
+    last_ingestion = get_last_ingestion(user_id, pill_type_value)
+    if last_ingestion is not None:
+        return date.fromtimestamp(last_ingestion) == date.today()
+    else:
+        return False
 
 
 def check_last_ingestion(intent, user_id, directive):
@@ -67,7 +79,6 @@ def check_last_ingestion(intent, user_id, directive):
     directive_to_return = None
 
     if 'pillType' in intent['slots'] and 'value' in intent['slots']['pillType']:
-        logger.info("We have a pillType value.")
         pill_type_value = intent['slots']['pillType']['value']
         logger.info("pillType value is {}".format(pill_type_value))
         last_ingestion = get_last_ingestion(user_id, pill_type_value)
