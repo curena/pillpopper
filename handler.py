@@ -10,7 +10,6 @@ import boto3
 from botocore.exceptions import ClientError
 
 dynamodb = boto3.client('dynamodb')
-seconds_in_a_day = 84600
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -18,6 +17,7 @@ logger.setLevel(logging.INFO)
 # main handler
 # noinspection PyUnusedLocal
 def popper_handler(event, context):
+    logger.info('Alexa Skill ID: {}'.format(os.environ['alexa_skill_id']))
     if (event['session']['application']['applicationId'] !=
             os.environ['alexa_skill_id']):
         raise ValueError("Invalid Application ID")
@@ -39,25 +39,17 @@ def new_ingestion(intent, user_id, directive):
     session_attributes = {}
     should_end_session = False
 
-    if 'pillType' in intent['slots']:
-        logger.info("pillType in intent['slots']")
+    if 'pillType' in intent['slots'] and 'value' in intent['slots']['pillType']:
+        logger.info("We have a pillType value.")
         pill_type = intent['slots']['pillType']['value']
-        logger.info("pillType is {}", pill_type)
+        logger.info("pillType is value {}".format(pill_type))
         add_ingestion_of(user_id, pill_type)
         session_attributes = {"pillType": pill_type}
-        speech_output = "You've just taken your " + \
-                        pill_type + \
-                        " medicine."
-        reprompt_text = "You can say you took your pill by saying, " \
-                        "I've just taken my pill."
     else:
-        speech_output = "I'm not sure what your medicine type is. " \
-                        "Please try again."
-        reprompt_text = "I'm not sure what your medicine type is. " \
-                        "You can tell me your pillType by saying something like, " \
-                        "The cholesterol pill, or, the Crestor pill."
+        logger.info("We do NOT have a pillType value.")
+
     return build_response(session_attributes,
-                          build_speechlet_response(card_title, speech_output, reprompt_text, should_end_session,
+                          build_speechlet_response(card_title, None, None, should_end_session,
                                                    directive))
 
 
@@ -72,57 +64,76 @@ def check_last_ingestion(intent, user_id, directive):
     card_title = intent['name']
     session_attributes = {}
     should_end_session = False
-    reprompt_text = None
+    directive_to_return = None
 
-    if 'pillType' in intent['slots']:
-        logger.info("pillType is in intent[\"slots\"]")
-        pill_type = intent['slots']['pillType']['value']
-        logger.info("pillType is {}", pill_type)
-        last_ingestion = get_last_ingestion(user_id, pill_type)
-        session_attributes = {"pillType": pill_type}
-        if not date.fromtimestamp(last_ingestion) == date.today():
-            speech_output = "You've already taken your " + \
-                            pill_type + \
-                            " medicine today."
+    if 'pillType' in intent['slots'] and 'value' in intent['slots']['pillType']:
+        logger.info("We have a pillType value.")
+        pill_type_value = intent['slots']['pillType']['value']
+        logger.info("pillType value is {}".format(pill_type_value))
+        last_ingestion = get_last_ingestion(user_id, pill_type_value)
+
+        if last_ingestion is not None:
+            session_attributes = {"pillType": pill_type_value}
+            if date.fromtimestamp(last_ingestion) == date.today():
+                speech_output = "You've already taken your " + \
+                                pill_type_value + \
+                                " medicine today."
+            else:
+                speech_output = "You have not yet taken your " + \
+                                pill_type_value + \
+                                " medicine today."
         else:
-            speech_output = "You have not yet taken your " + \
-                            pill_type + \
-                            " medicine today."
+            speech_output = "There is no entry for that particular medicine type."
     else:
-        logger.info("pillType is NOT in intent[\"slots\"]")
-        speech_output = "I'm not sure what your medicine type is. " \
-                        "Please try again."
-        reprompt_text = "I'm not sure what your medicine type is. " \
-                        "You can tell me your pillType by saying something like, " \
-                        "The cholesterol pill, or, the Crestor pill."
+        speech_output = None
+        directive_to_return = directive
+        logger.info("We do NOT have a pillType value.")
 
     return build_response(session_attributes,
-                          build_speechlet_response(card_title, speech_output, reprompt_text, should_end_session,
-                                                   directive))
+                          build_speechlet_response(card_title, speech_output, None, should_end_session,
+                                                   directive_to_return))
 
 
 def build_speechlet_response(title, output, reprompt_text, should_end_session, directive):
-    return {
-        'outputSpeech': {
-            'type': 'PlainText',
-            'text': output
-        },
-        'card': {
-            'type': 'Simple',
-            'title': "SessionSpeechlet - " + title,
-            'content': "SessionSpeechlet - " + output
-        },
-        'reprompt': {
+    output_field = None
+    reprompt_field = None
+
+    if output is not None:
+        output_field = {
+            'type': 'PlainText', 'text': output
+        }
+
+    if reprompt_text is not None:
+        reprompt_field = {
             'outputSpeech': {
-                'type': 'PlainText',
-                'text': reprompt_text
+                'type': 'PlainText', 'text': reprompt_text
             }
-        },
-        'shouldEndSession': should_end_session,
-        'directives': [
-            directive
-        ]
-    }
+        }
+
+    if directive is None:
+        speechlet_response = {
+            'outputSpeech': output_field,
+            'card': {
+                'type': 'Simple',
+                'title': "SessionSpeechlet - " + title,
+                'content': "SessionSpeechlet - " + str(output)
+            },
+            'reprompt': reprompt_field,
+            'shouldEndSession': should_end_session
+        }
+    else:
+        speechlet_response = {
+            'card': {
+                'type': 'Simple',
+                'title': "SessionSpeechlet - " + title,
+                'content': "SessionSpeechlet - " + str(output)
+            },
+            'shouldEndSession': should_end_session,
+            'directives': [directive]
+        }
+    logger.info('Speechlet Response: {}'.format(speechlet_response))
+
+    return speechlet_response
 
 
 def get_welcome_response(directive):
@@ -181,12 +192,13 @@ def get_last_ingestion(user_id, pill_type):
             }
         )
         logger.info("Response: {}".format(json.dumps(response, indent=4)))
-        item = response['Item']
+        if 'Item' in response:
+            item = response['Item']
     except ClientError as e:
         logger.error("Error finding item. {}".format(e.response['Error']['Message']))
 
     if item is not None:
-        return float(item['timestamp'])
+        return float(item['timestamp']['N'])
     else:
         return None
 
