@@ -28,8 +28,9 @@ def popper_handler(event, context):
         return on_session_ended(event['request'], event['session'])
 
 
-def new_ingestion(intent, user_id):
+def new_ingestion(intent, user_id, directive):
     """ Adds a new ingestion event based on the pillType.
+    :param directive: Notifies Alexa whether or not to continue asking.
     :param intent: The intent containing the pillType slot.
     :param user_id: The id of the user for whom to add a new ingestion.
     :return: an appropriate response.
@@ -37,8 +38,11 @@ def new_ingestion(intent, user_id):
     card_title = intent['name']
     session_attributes = {}
     should_end_session = False
+
     if 'pillType' in intent['slots']:
+        logger.info("pillType in intent['slots']")
         pill_type = intent['slots']['pillType']['value']
+        logger.info("pillType is {}", pill_type)
         add_ingestion_of(user_id, pill_type)
         session_attributes = {"pillType": pill_type}
         speech_output = "You've just taken your " + \
@@ -53,11 +57,13 @@ def new_ingestion(intent, user_id):
                         "You can tell me your pillType by saying something like, " \
                         "The cholesterol pill, or, the Crestor pill."
     return build_response(session_attributes,
-                          build_speechlet_response(card_title, speech_output, reprompt_text, should_end_session))
+                          build_speechlet_response(card_title, speech_output, reprompt_text, should_end_session,
+                                                   directive))
 
 
-def check_last_ingestion(intent, user_id):
+def check_last_ingestion(intent, user_id, directive):
     """ Checks whether last ingestion occurred within the last 24 hours.
+    :param directive: Notifies Alexa whether or not to continue asking.
     :param intent: The intent containing the pillType slot.
     :param user_id: The id of the user for whom to check the last ingestion.
     :return: an appropriate response.
@@ -66,11 +72,12 @@ def check_last_ingestion(intent, user_id):
     card_title = intent['name']
     session_attributes = {}
     should_end_session = False
-    speech_output = None
     reprompt_text = None
 
     if 'pillType' in intent['slots']:
+        logger.info("pillType is in intent[\"slots\"]")
         pill_type = intent['slots']['pillType']['value']
+        logger.info("pillType is {}", pill_type)
         last_ingestion = get_last_ingestion(user_id, pill_type)
         session_attributes = {"pillType": pill_type}
         if not date.fromtimestamp(last_ingestion) == date.today():
@@ -82,17 +89,19 @@ def check_last_ingestion(intent, user_id):
                             pill_type + \
                             " medicine today."
     else:
+        logger.info("pillType is NOT in intent[\"slots\"]")
         speech_output = "I'm not sure what your medicine type is. " \
                         "Please try again."
         reprompt_text = "I'm not sure what your medicine type is. " \
-                    "You can tell me your pillType by saying something like, " \
-                    "The cholesterol pill, or, the Crestor pill."
+                        "You can tell me your pillType by saying something like, " \
+                        "The cholesterol pill, or, the Crestor pill."
 
     return build_response(session_attributes,
-                          build_speechlet_response(card_title, speech_output, reprompt_text, should_end_session))
+                          build_speechlet_response(card_title, speech_output, reprompt_text, should_end_session,
+                                                   directive))
 
 
-def build_speechlet_response(title, output, reprompt_text, should_end_session):
+def build_speechlet_response(title, output, reprompt_text, should_end_session, directive):
     return {
         'outputSpeech': {
             'type': 'PlainText',
@@ -109,11 +118,14 @@ def build_speechlet_response(title, output, reprompt_text, should_end_session):
                 'text': reprompt_text
             }
         },
-        'shouldEndSession': should_end_session
+        'shouldEndSession': should_end_session,
+        'directives': [
+            directive
+        ]
     }
 
 
-def get_welcome_response():
+def get_welcome_response(directive):
     session_attributes = {}
     card_title = "Welcome"
     speech_output = "Welcome to PillPopper. Please tell me the type of pill."
@@ -122,7 +134,7 @@ def get_welcome_response():
                     "the cholesterol pill."
     should_end_session = False
     return build_response(session_attributes, build_speechlet_response(
-        card_title, speech_output, reprompt_text, should_end_session))
+        card_title, speech_output, reprompt_text, should_end_session, directive))
 
 
 def build_response(session_attributes, speechlet_response):
@@ -185,7 +197,7 @@ def handle_session_end_request():
     # Setting this to true ends the session and exits the skill.
     should_end_session = True
     return build_response({}, build_speechlet_response(
-        card_title, speech_output, None, should_end_session))
+        card_title, speech_output, None, should_end_session, {}))
 
 
 def on_session_ended(session_ended_request, session):
@@ -203,14 +215,21 @@ def on_intent(intent_request, session):
     user_id = session['user']['userId']
     intent = intent_request['intent']
     intent_name = intent_request['intent']['name']
+    dialog_state = intent_request['dialogState']
+    directive = {}
+
+    if dialog_state != 'COMPLETED':
+        directive = {
+            "type": "Dialog.Delegate"
+        }
 
     # Dispatch to your skill's intent handlers
     if intent_name == "DidITakePill":
-        return check_last_ingestion(intent, user_id)
+        return check_last_ingestion(intent, user_id, directive)
     elif intent_name == "TookMyPill":
-        return new_ingestion(intent, user_id)
+        return new_ingestion(intent, user_id, directive)
     elif intent_name == "AMAZON.HelpIntent":
-        return get_welcome_response()
+        return get_welcome_response(directive)
     elif intent_name == "AMAZON.CancelIntent" or intent_name == "AMAZON.StopIntent":
         return handle_session_end_request()
     else:
