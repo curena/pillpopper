@@ -38,6 +38,7 @@ def new_ingestion(intent, user_id, directive):
     card_title = intent['name']
     session_attributes = {}
     should_end_session = False
+    directive_to_return = None
 
     if 'pillType' in intent['slots'] and 'value' in intent['slots']['pillType']:
         pill_type_value = intent['slots']['pillType']['value']
@@ -50,11 +51,12 @@ def new_ingestion(intent, user_id, directive):
             speech_output = "Ok, I've recorded that you just took your " + pill_type_value + " medicine."
     else:
         speech_output = None
+        directive_to_return = directive
         logger.info("We do NOT have a pillType value.")
 
     return build_response(session_attributes,
                           build_speechlet_response(card_title, speech_output, None, should_end_session,
-                                                   directive))
+                                                   directive_to_return))
 
 
 def took_pill_today(user_id, pill_type_value):
