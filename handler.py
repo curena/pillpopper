@@ -22,6 +22,8 @@ def popper_handler(event, context):
             os.environ['alexa_skill_id']):
         raise ValueError("Invalid Application ID")
 
+    if event['request']['type'] == "LaunchRequest":
+        return on_launch(event['request'], event['session'])
     if event['request']['type'] == "IntentRequest":
         return on_intent(event['request'], event['session'])
     elif event['request']['type'] == "SessionEndedRequest":
@@ -37,7 +39,7 @@ def new_ingestion(intent, user_id, directive):
     """
     card_title = intent['name']
     session_attributes = {}
-    should_end_session = False
+    should_end_session = True
     directive_to_return = None
 
     if 'pillType' in intent['slots'] and 'value' in intent['slots']['pillType']:
@@ -51,6 +53,7 @@ def new_ingestion(intent, user_id, directive):
             speech_output = "Ok, I've recorded that you just took your " + pill_type_value + " medicine."
     else:
         speech_output = None
+        should_end_session = False
         directive_to_return = directive
         logger.info("We do NOT have a pillType value.")
 
@@ -77,7 +80,7 @@ def check_last_ingestion(intent, user_id, directive):
 
     card_title = intent['name']
     session_attributes = {}
-    should_end_session = False
+    should_end_session = True
     directive_to_return = None
 
     if 'pillType' in intent['slots'] and 'value' in intent['slots']['pillType']:
@@ -99,6 +102,7 @@ def check_last_ingestion(intent, user_id, directive):
             speech_output = "There is no entry for that particular medicine type."
     else:
         speech_output = None
+        should_end_session = False
         directive_to_return = directive
         logger.info("We do NOT have a pillType value.")
 
@@ -152,10 +156,10 @@ def build_speechlet_response(title, output, reprompt_text, should_end_session, d
 def get_welcome_response(directive):
     session_attributes = {}
     card_title = "Welcome"
-    speech_output = "Welcome to PillPopper. Please tell me the type of pill."
-    reprompt_text = "Please tell me the pill type by saying something like, " \
-                    "the pill type is Crestor, or, " \
-                    "the cholesterol pill."
+    speech_output = "Welcome to PillPopper. Please tell me what you'd like to do. " \
+                    "You can say, 'I just took my pill', or, 'Did I take my pill today?'"
+    reprompt_text = "I'm not quite sure what you meant by that. " \
+                    "You can say, 'I just took my pill', or, 'Did I take my pill today?'"
     should_end_session = False
     return build_response(session_attributes, build_speechlet_response(
         card_title, speech_output, reprompt_text, should_end_session, directive))
@@ -172,6 +176,9 @@ def build_response(session_attributes, speechlet_response):
 def add_ingestion_of(user_id, pill_type):
     today = convert_date_to_string(date.today())
     today_timestamp = time.mktime(datetime.strptime(today, "%Y-%m-%d").timetuple())
+    item_value = {
+        'N': str(today_timestamp)
+    }
 
     try:
         dynamodb.update_item(
@@ -180,9 +187,9 @@ def add_ingestion_of(user_id, pill_type):
                 'user_id': {'S': str(user_id)},
                 'pill_type': {'S': str(pill_type)}
             },
-            UpdateExpression="set timestamp = :t",
+            UpdateExpression="set ingestion_timestamp = :t",
             ExpressionAttributeValues={
-                ':t': today_timestamp
+                ':t': item_value
             },
             ReturnValues="UPDATED_NEW"
         )
@@ -211,7 +218,7 @@ def get_last_ingestion(user_id, pill_type):
         logger.error("Error finding item. {}".format(e.response['Error']['Message']))
 
     if item is not None:
-        return float(item['timestamp']['N'])
+        return float(item['ingestion_timestamp']['N'])
     else:
         return None
 
@@ -222,7 +229,7 @@ def handle_session_end_request():
     # Setting this to true ends the session and exits the skill.
     should_end_session = True
     return build_response({}, build_speechlet_response(
-        card_title, speech_output, None, should_end_session, {}))
+        card_title, speech_output, None, should_end_session, None))
 
 
 def on_session_ended(session_ended_request, session):
@@ -231,6 +238,17 @@ def on_session_ended(session_ended_request, session):
     return {
         "message": "Goodbye."
     }
+
+
+def on_launch(launch_request, session):
+    """ Called when the user launches the skill without specifying what they
+    want
+    """
+
+    print("on_launch requestId=" + launch_request['requestId'] +
+          ", sessionId=" + session['sessionId'])
+    # Dispatch to your skill's launch
+    return get_welcome_response(None)
 
 
 def on_intent(intent_request, session):
