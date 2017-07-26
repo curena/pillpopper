@@ -22,6 +22,11 @@ def popper_handler(event, context):
             os.environ['alexa_skill_id']):
         raise ValueError("Invalid Application ID")
 
+    logger.info("Request Type: {}".format(event['request']['type']))
+
+    if 'intent' in event['request']:
+        logger.info("Intent Name: {}".format(event['request']['intent']['name']))
+
     if event['request']['type'] == "LaunchRequest":
         return on_launch(event['request'], event['session'])
     if event['request']['type'] == "IntentRequest":
@@ -259,7 +264,7 @@ def on_intent(intent_request, session):
     intent = intent_request['intent']
     intent_name = intent_request['intent']['name']
     dialog_state = intent_request['dialogState']
-    directive = {}
+    directive = None
 
     if dialog_state != 'COMPLETED':
         directive = {
@@ -272,8 +277,10 @@ def on_intent(intent_request, session):
     elif intent_name == "TookMyPill":
         return new_ingestion(intent, user_id, directive)
     elif intent_name == "AMAZON.HelpIntent":
+        logger.info("Help intent executed.")
         return get_welcome_response(directive)
     elif intent_name == "AMAZON.CancelIntent" or intent_name == "AMAZON.StopIntent":
+        logger.info("Cancel or Stop intent executed.")
         return handle_session_end_request()
     else:
         raise ValueError("Invalid intent")
