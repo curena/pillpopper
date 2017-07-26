@@ -22,11 +22,6 @@ def popper_handler(event, context):
             os.environ['alexa_skill_id']):
         raise ValueError("Invalid Application ID")
 
-    logger.info("Request Type: {}".format(event['request']['type']))
-
-    if 'intent' in event['request']:
-        logger.info("Intent Name: {}".format(event['request']['intent']['name']))
-
     if event['request']['type'] == "LaunchRequest":
         return on_launch(event['request'], event['session'])
     if event['request']['type'] == "IntentRequest":
@@ -137,8 +132,8 @@ def build_speechlet_response(title, output, reprompt_text, should_end_session, d
             'outputSpeech': output_field,
             'card': {
                 'type': 'Simple',
-                'title': "SessionSpeechlet - " + title,
-                'content': "SessionSpeechlet - " + str(output)
+                'title': title,
+                'content': str(output)
             },
             'reprompt': reprompt_field,
             'shouldEndSession': should_end_session
@@ -147,8 +142,8 @@ def build_speechlet_response(title, output, reprompt_text, should_end_session, d
         speechlet_response = {
             'card': {
                 'type': 'Simple',
-                'title': "SessionSpeechlet - " + title,
-                'content': "SessionSpeechlet - " + str(output)
+                'title': title,
+                'content': str(output)
             },
             'shouldEndSession': should_end_session,
             'directives': [directive]
@@ -277,10 +272,8 @@ def on_intent(intent_request, session):
     elif intent_name == "TookMyPill":
         return new_ingestion(intent, user_id, directive)
     elif intent_name == "AMAZON.HelpIntent":
-        logger.info("Help intent executed.")
         return get_welcome_response(directive)
     elif intent_name == "AMAZON.CancelIntent" or intent_name == "AMAZON.StopIntent":
-        logger.info("Cancel or Stop intent executed.")
         return handle_session_end_request()
     else:
         raise ValueError("Invalid intent")
